@@ -3,6 +3,9 @@ name = "airflow-plugin-presto_apas"
 version = "0.1.0"
 description = ""
 authors = ["Civitaspo <civitaspo@gmail.com>"]
+packages = [
+  { include = "airflow", from = "src" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.7"
