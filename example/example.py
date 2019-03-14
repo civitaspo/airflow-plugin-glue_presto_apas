@@ -2,7 +2,7 @@
 
 import airflow
 from airflow.models import DAG
-from airflow.operators.presto_apas import PrestoApasOperator
+from airflow.operators.glue_presto_apas import GluePrestoApasOperator
 from datetime import timedelta
 
 args = {
@@ -22,11 +22,12 @@ dag = DAG(
     default_args=args,
 )
 
-PrestoApasOperator(
+GluePrestoApasOperator(
         task_id='example-task',
         schema='example-schema',
         table='example-schema',
         sql='',
+        catalog_region_name='ap-northeast-1',
         dag=dag,
         )
 
