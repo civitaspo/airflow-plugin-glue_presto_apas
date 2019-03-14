@@ -208,3 +208,6 @@ Temporary Items
 
 # poetry
 poetry.lock
+
+# airflow
+logs
