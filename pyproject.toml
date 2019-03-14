@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "airflow-plugin-presto_apas"
-version = "0.1.0"
+version = "0.0.1"
 description = ""
 authors = ["Civitaspo <civitaspo@gmail.com>"]
 packages = [
@@ -17,3 +17,6 @@ pytest = "^3.0"
 [build-system]
 requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
+
+[tool.poetry.plugins."airflow.plugins"]
+presto_apas = "airflow.plugin.presto_apas:PrestoApasPlugin"
