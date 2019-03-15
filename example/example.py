@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
+from datetime import timedelta
+
 import airflow
 from airflow.models import DAG
 from airflow.operators.glue_presto_apas import GluePrestoApasOperator
-from datetime import timedelta
 
 args = {
     'owner': 'airflow',
@@ -24,9 +25,13 @@ dag = DAG(
 
 GluePrestoApasOperator(
         task_id='example-task',
-        schema='example-schema',
-        table='example-schema',
-        sql='',
+        db='example_db',
+        table='example_table',
+        sql='example.sql',
+        partition_kv={
+            'table_schema': 'example_db',
+            'table_name': 'example_table'
+        },
         catalog_region_name='ap-northeast-1',
         dag=dag,
         )
