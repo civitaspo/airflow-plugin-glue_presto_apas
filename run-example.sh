@@ -7,7 +7,7 @@ REPO_ROOT=$(cd $(dirname $0); pwd)
 REPO_NAME=${REPO_ROOT##*/}
 EXEC_DAG=${1:-example-dag}
 EXEC_TASK=${2:-example-task}
-EXEC_DATE=${3:-$(date '+%F')}
+EXEC_DATE=${3:-$(TZ=UTC date '+%F')}
 PRESTO_HOST=${PRESTO_HOST:-}
 PRESTO_PORT=${PRESTO_PORT:-}
 PRESTO_CATALOG=${PRESTO_CATALOG:-}
