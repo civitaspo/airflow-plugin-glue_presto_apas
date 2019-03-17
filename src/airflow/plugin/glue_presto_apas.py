@@ -30,7 +30,7 @@ SupportedSaveModes = [
 
 # ===== helper hook =====
 
-class GlueApasHook(AwsHook):
+class GlueDataCatalogHook(AwsHook):
     def get_conn(self):
         self.conn = self.get_client_type('glue', self.region_name)
         return self.conn
@@ -236,10 +236,10 @@ class GluePrestoApasOperator(BaseOperator):
     def _presto_hook(self) -> PrestoHook:
         return PrestoHook(presto_conn_id=self.presto_conn_id)
 
-    def _glue_apas_hook(self) -> GlueApasHook:
-        return GlueApasHook(aws_conn_id=self.aws_conn_id,
-                            region_name=self.catalog_region_name,
-                            catalog_id=self.catalog_id)
+    def _glue_apas_hook(self) -> GlueDataCatalogHook:
+        return GlueDataCatalogHook(aws_conn_id=self.aws_conn_id,
+                                   region_name=self.catalog_region_name,
+                                   catalog_id=self.catalog_id)
 
     def _s3_hook(self) -> S3Hook:
         return S3Hook(aws_conn_id=self.aws_conn_id)
@@ -258,7 +258,7 @@ class GluePrestoApasOperator(BaseOperator):
         return ''.join(random.choice(chars) for _ in range(size))
 
     def pre_execute(self, context) -> None:
-        glue: GlueApasHook = self._glue_apas_hook()
+        glue: GlueDataCatalogHook = self._glue_apas_hook()
 
         if not glue.does_database_exists(name=self.db):
             raise ConfigError(f"DB[{self.db}] is not found.")
@@ -284,7 +284,7 @@ class GluePrestoApasOperator(BaseOperator):
     def execute(self, context) -> None:
         s3: S3Hook = self._s3_hook()
         presto: PrestoHook = self._presto_hook()
-        glue: GlueApasHook = self._glue_apas_hook()
+        glue: GlueDataCatalogHook = self._glue_apas_hook()
 
         bucket, prefix = self._extract_s3_uri(self.location)
         if not prefix.endswith('/'):
