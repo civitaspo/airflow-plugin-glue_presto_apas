@@ -167,6 +167,26 @@ class GlueApasHook(AwsHook):
             args['CatalogId'] = self.catalog_id
         self.get_conn().create_partition(**args)
 
+    def convert_table_to_partition(
+            self,
+            src_db: str, src_table: str,
+            dst_db: str, dst_table: str,
+            partition_values: List[str]):
+        sd = self.get_table(db=src_db, name=src_table)['StorageDescriptor']
+        args = {
+            'DatabaseName': dst_db,
+            'TableName': dst_table,
+            'PartitionInput': {
+                'Values': partition_values,
+                'StorageDescriptor': sd,
+            }
+        }
+        if self.catalog_id:
+            args['CatalogId'] = self.catalog_id
+        self.get_conn().create_partition(**args)
+        self.delete_table(db=src_db, name=src_table)
+
+
 
 # ===== main =====
 
@@ -320,27 +340,25 @@ class GluePrestoApasOperator(BaseOperator):
                 presto.get_first(f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )"
                                  f"WITH ( {','.join(props_stmts)} )")
                 presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
+                if glue.does_partition_exists(db=self.db,
+                                              table_name=self.table,
+                                              partition_values=list(self.partition_kv.values())):
+                    logging.info(f"Delete a partition[{self.partition_kv.items()}]")
+                    glue.delete_partition(db=self.db,
+                                          table_name=self.table,
+                                          partition_values=list(self.partition_kv.values()))
+                logging.info(f"Convert table[{self.db}.{tmp_table}]"
+                             f" to partition[{self.partition_kv.items()}]")
+                glue.convert_table_to_partition(src_db=self.db,
+                                                src_table=tmp_table,
+                                                dst_db=self.db,
+                                                dst_table=self.table,
+                                                partition_values=list(self.partition_kv.values()))
             finally:
-                glue.delete_table(db=self.db, name=tmp_table)
+                if glue.does_table_exists(db=self.db, name=tmp_table):
+                    glue.delete_table(db=self.db, name=tmp_table)
         finally:
             s3.delete_objects(bucket, prefix + dummy_fname)
-
-        ## create partition
-        exps = []
-        for k, v in self.partition_kv.items():
-            exps.append(f"{k}='{v}'")
-        if glue.does_partition_exists(db=self.db,
-                                      table_name=self.table,
-                                      partition_values=list(self.partition_kv.values())):
-            logging.info(f"Delete a partition[{self.partition_kv.items()}]")
-            glue.delete_partition(db=self.db,
-                                  table_name=self.table,
-                                  partition_values=list(self.partition_kv.values()))
-        logging.info(f"Create a partition[{self.partition_kv.items()}] with the location[{self.location}].")
-        glue.create_partition(db=self.db,
-                              table_name=self.table,
-                              partition_values=list(self.partition_kv.values()),
-                              location=self.location)
 
 
 class GluePrestoApasPlugin(AirflowPlugin):
