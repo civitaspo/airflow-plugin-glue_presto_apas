@@ -79,6 +79,18 @@ class GluePrestoApasOperator(BaseOperator):
     def _s3_hook(self) -> S3Hook:
         return S3Hook(aws_conn_id=self.aws_conn_id)
 
+    def _gen_partition_location(self):
+        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+        partition_elems: List[str] = []
+        for pk in glue.get_partition_keys(db=self.db, name=self.table):
+            if pk not in self.partition_kv:
+                raise ConfigError(f"Partition key[{pk}] is not found in 'partition_kv'")
+            partition_elems.append(f"{pk}={self.partition_kv[pk]}")
+        table_location = glue.get_table_location(db=self.db, name=self.table)
+        if not table_location.endswith('/'):
+            table_location = table_location + '/'
+        return table_location + '/'.join(partition_elems)
+
     @staticmethod
     def _extract_s3_uri(uri) -> (str, str):
         m = re.search('^s3://([^/]+)/(.+)', uri)
@@ -99,27 +111,15 @@ class GluePrestoApasOperator(BaseOperator):
             raise ConfigError(f"DB[{self.db}] is not found.")
         if not glue.does_table_exists(db=self.db, name=self.table):
             raise ConfigError(f"Table[{self.db}.{self.table}] is not found.")
-
-        partition_keys: List[str] = glue.get_partition_keys(db=self.db, name=self.table)
-        if not partition_keys:
+        if not glue.get_partition_keys(db=self.db, name=self.table):
             raise ConfigError(f"Table[{self.db}.{self.table}] does not have partition keys.")
-        logging.info(f"Table[{self.db}.{self.table}] has partitions{partition_keys}")
-
         if not self.location:
-            partition_elems: List[str] = []
-            for pk in partition_keys:
-                if pk not in self.partition_kv:
-                    raise ConfigError(f"Partition key[{pk}] is not found in 'partition_kv'")
-                partition_elems.append(f"{pk}={self.partition_kv[pk]}")
-            table_location = glue.get_table_location(db=self.db, name=self.table)
-            if not table_location.endswith('/'):
-                table_location = table_location + '/'
-            self.location = table_location + '/'.join(partition_elems)
+            self.location = self._gen_partition_location()
+        if not self.location.endswith('/'):
+            self.location = self.location + '/'
 
-    def execute(self, context) -> None:
+    def _processable_check_n_prepare_location(self) -> bool:
         s3: S3Hook = self._s3_hook()
-        presto: PrestoHook = self._presto_hook()
-        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
 
         bucket, prefix = self._extract_s3_uri(self.location)
         if not prefix.endswith('/'):
@@ -128,10 +128,10 @@ class GluePrestoApasOperator(BaseOperator):
             if self.save_mode == SkipIfExistsSaveMode:
                 logging.info(f"Skip this execution because location[{self.location}] exists"
                              f" and save_mode[{self.save_mode}] is defined.")
-                return
+                return False
             elif self.save_mode == ErrorIfExistsSaveMode:
-                raise Error(f"Raise a exception because location[{self.location}] exists"
-                            f" and save_mode[{self.save_mode}] is defined.")
+                raise ConfigError(f"Raise a exception because location[{self.location}] exists"
+                                  f" and save_mode[{self.save_mode}] is defined.")
             elif self.save_mode == IgnoreSaveMode:
                 logging.info(f"Continue the execution regardless that location[{self.location}] exists"
                              f" because save_mode[{self.save_mode}] is defined.")
@@ -142,38 +142,65 @@ class GluePrestoApasOperator(BaseOperator):
                 s3.delete_objects(bucket=bucket, keys=keys)
             else:
                 raise UnknownError()
+        return True
 
+    def _desc_columns_by_query(self, sql: str):
+        presto: PrestoHook = self._presto_hook()
         tmp_table = f"__work_airflow_glue_presto_apas" \
             f"_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}" \
             f"_{self._random_str()}"
-
-        # columns detection
-        col_stmts = []
+        columns: List[Dict[str, str]] = []
         try:
             presto.get_first(f"CREATE VIEW {self.db}.{tmp_table} AS {self.sql}")
             for c in presto.get_records(f"DESCRIBE {self.db}.{tmp_table}"):
                 col_name = c[0]
                 col_type = c[1]
-                col_stmts.append(f"{col_name} {col_type}")
+                columns.append({
+                    'name': col_name,
+                    'type': col_type,
+                })
         finally:
             presto.get_first(f"DROP VIEW {self.db}.{tmp_table}")
+        return columns
+
+    def _prepare_create_table_properties_stmt(self):
+        props = self.additional_properties.copy()
+        props['external_location'] = f"'{self.location}'"
+        props['format'] = f"'{self.fmt}'"
+        props_stmts = []
+        for k, v in props.items():
+            props_stmts.append(f"{k} = {v}")
+        return ','.join(props_stmts)
+
+    def execute(self, context) -> None:
+        s3: S3Hook = self._s3_hook()
+        presto: PrestoHook = self._presto_hook()
+        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+
+        if not self._processable_check_n_prepare_location():
+            return
+
+        # columns detection
+        col_stmts: List[str] = []
+        for c in self._desc_columns_by_query(self.sql):
+            col_stmts.append(f"{c['name']} {c['type']}")
         logging.info(f"Detect columns{col_stmts}")
 
+        tmp_table = f"__work_airflow_glue_presto_apas" \
+            f"_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}" \
+            f"_{self._random_str()}"
+
+        bucket, prefix = self._extract_s3_uri(self.location)
         dummy_fname = '_DUMMY'
         try:
             # NOTE: Avoid `failed: External location must be a directory`.
             logging.info(f"Upload '{dummy_fname}' -> s3://{bucket}/{prefix + dummy_fname}")
             s3.load_string(string_data="", key=prefix + dummy_fname, bucket_name=bucket)
 
-            props = self.additional_properties.copy()
-            props['external_location'] = f"'{self.location}'"
-            props['format'] = f"'{self.fmt}'"
-            props_stmts = []
-            for k, v in props.items():
-                props_stmts.append(f"{k} = {v}")
             try:
+                prop_stmt = self._prepare_create_table_properties_stmt()
                 presto.get_first(f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )"
-                                 f"WITH ( {','.join(props_stmts)} )")
+                                 f"WITH ( {prop_stmt} )")
                 presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
                 if glue.does_partition_exists(db=self.db,
                                               table_name=self.table,
