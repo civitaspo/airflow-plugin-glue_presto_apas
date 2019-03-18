@@ -1,4 +1,4 @@
-import airflow.plugin.glue_presto_apas
+import airflow.plugins.glue_presto_apas
 
 # TODO: Write tests
 
