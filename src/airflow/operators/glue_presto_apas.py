@@ -12,13 +12,13 @@ from airflow.utils.decorators import apply_defaults
 
 from airflow.hooks.glue_presto_apas import GlueDataCatalogHook
 
-DoNothingIfExistsSaveMode = 'do_nothing_if_exists'
+SkipIfExistsSaveMode = 'skip_if_exists'
 ErrorIfExistsSaveMode = 'error_if_exists'
 IgnoreSaveMode = 'ignore'
 OverwriteSaveMode = 'overwrite'
 
 AvailableSaveModes = [
-    DoNothingIfExistsSaveMode,
+    SkipIfExistsSaveMode,
     ErrorIfExistsSaveMode,
     IgnoreSaveMode,
     OverwriteSaveMode,
@@ -125,7 +125,7 @@ class GluePrestoApasOperator(BaseOperator):
         if not prefix.endswith('/'):
             prefix = prefix + '/'
         if s3.check_for_prefix(bucket_name=bucket, prefix=prefix, delimiter='/'):
-            if self.save_mode == DoNothingIfExistsSaveMode:
+            if self.save_mode == SkipIfExistsSaveMode:
                 logging.info(f"Skip this execution because location[{self.location}] exists"
                              f" and save_mode[{self.save_mode}] is defined.")
                 return
