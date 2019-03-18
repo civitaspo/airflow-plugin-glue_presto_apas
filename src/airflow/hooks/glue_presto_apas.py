@@ -43,7 +43,6 @@ class GlueDataCatalogHook(AwsHook):
             self.get_database(name=name)
             return True
         except ClientError as ex:
-            logging.warning(ex)
             # NOTE: cannot import botocore.errorfactory.EntityNotFoundExc
             if ex.__class__.__name__ == 'EntityNotFoundException':
                 return False
@@ -63,7 +62,6 @@ class GlueDataCatalogHook(AwsHook):
             self.get_table(db=db, name=name)
             return True
         except ClientError as ex:
-            logging.warning(ex)
             if ex.__class__.__name__ == 'EntityNotFoundException':
                 return False
             raise ex
@@ -105,7 +103,6 @@ class GlueDataCatalogHook(AwsHook):
             self.get_partition(db=db, table_name=table_name, partition_values=partition_values)
             return True
         except ClientError as ex:
-            logging.warning(ex)
             if ex.__class__.__name__ == 'EntityNotFoundException':
                 return False
             raise ex
@@ -141,6 +138,30 @@ class GlueDataCatalogHook(AwsHook):
         if self.catalog_id:
             args['CatalogId'] = self.catalog_id
         self.get_conn().create_partition(**args)
+
+    def update_partition(self, db: str, table_name: str, partition_values: List[str], location: str) -> None:
+        table = self.get_table(db=db, name=table_name)
+        sd = table['StorageDescriptor']
+        args = {
+            'DatabaseName': db,
+            'TableName': table_name,
+            'PartitionValueList': partition_values,
+            'PartitionInput': {
+                'Values': partition_values,
+                'StorageDescriptor': {
+                    'Location': location,
+                    'Columns': sd['Columns'],
+                    'InputFormat': sd['InputFormat'],
+                    'OutputFormat': sd['OutputFormat'],
+                    'Compressed': sd['Compressed'],
+                    'SerdeInfo': sd['SerdeInfo'],
+                },
+            },
+        }
+        if self.catalog_id:
+            args['CatalogId'] = self.catalog_id
+        self.get_conn().update_partition(**args)
+
 
     def convert_table_to_partition(
             self,
