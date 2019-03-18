@@ -19,4 +19,4 @@ requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
 
 [tool.poetry.plugins."airflow.plugins"]
-glue_presto_apas = "airflow.plugin.glue_presto_apas:GluePrestoApasPlugin"
+glue_presto_apas = "airflow.plugins.glue_presto_apas:GluePrestoApasPlugin"
