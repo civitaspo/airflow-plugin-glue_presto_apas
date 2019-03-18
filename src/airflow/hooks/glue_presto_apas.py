@@ -44,7 +44,7 @@ class GlueDataCatalogHook(AwsHook):
             return True
         except ClientError as ex:
             logging.warning(ex)
-            # NOTE: cannot improt botocore.errorfactory.EntityNotFoundExc
+            # NOTE: cannot import botocore.errorfactory.EntityNotFoundExc
             if ex.__class__.__name__ == 'EntityNotFoundException':
                 return False
             raise ex
