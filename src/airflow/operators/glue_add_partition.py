@@ -73,6 +73,8 @@ class GlueAddPartitionOperator(BaseOperator):
             raise ConfigError(f"Table[{self.db}.{self.table}] does not have partition keys.")
         if not self.location:
             self.location = self._gen_partition_location()
+        if not self.location.endswith('/'):
+            self.location = self.location + '/'
 
     def execute(self, context):
         glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
