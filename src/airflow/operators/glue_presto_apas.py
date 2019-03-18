@@ -12,16 +12,16 @@ from airflow.utils.decorators import apply_defaults
 
 from airflow.hooks.glue_presto_apas import GlueDataCatalogHook
 
-SaveModeDoNothingIfExists = 'do_nothing_if_exists'
-SaveModeErrorIfExists = 'error_if_exists'
-SaveModeIgnore = 'ignore'
-SaveModeOverwrite = 'overwrite'
+DoNothingIfExistsSaveMode = 'do_nothing_if_exists'
+ErrorIfExistsSaveMode = 'error_if_exists'
+IgnoreSaveMode = 'ignore'
+OverwriteSaveMode = 'overwrite'
 
-SupportedSaveModes = [
-    SaveModeDoNothingIfExists,
-    SaveModeErrorIfExists,
-    SaveModeIgnore,
-    SaveModeOverwrite,
+AvailableSaveModes = [
+    DoNothingIfExistsSaveMode,
+    ErrorIfExistsSaveMode,
+    IgnoreSaveMode,
+    OverwriteSaveMode,
 ]
 
 
@@ -60,9 +60,9 @@ class GluePrestoApasOperator(BaseOperator):
         self.presto_conn_id = presto_conn_id
         self.aws_conn_id = aws_conn_id
 
-        if save_mode not in SupportedSaveModes:
+        if save_mode not in AvailableSaveModes:
             raise ConfigError(f"Save mode[{save_mode}] is unsupported."
-                              f" Supported save modes are {SupportedSaveModes}.")
+                              f" Supported save modes are {AvailableSaveModes}.")
         for p in ['format', 'external_location']:
             if p in additional_properties:
                 raise ConfigError(f"Additional properties must not includes '{p}'"
@@ -125,17 +125,17 @@ class GluePrestoApasOperator(BaseOperator):
         if not prefix.endswith('/'):
             prefix = prefix + '/'
         if s3.check_for_prefix(bucket_name=bucket, prefix=prefix, delimiter='/'):
-            if self.save_mode == SaveModeDoNothingIfExists:
+            if self.save_mode == DoNothingIfExistsSaveMode:
                 logging.info(f"Skip this execution because location[{self.location}] exists"
                              f" and save_mode[{self.save_mode}] is defined.")
                 return
-            elif self.save_mode == SaveModeErrorIfExists:
+            elif self.save_mode == ErrorIfExistsSaveMode:
                 raise Error(f"Raise a exception because location[{self.location}] exists"
                             f" and save_mode[{self.save_mode}] is defined.")
-            elif self.save_mode == SaveModeIgnore:
+            elif self.save_mode == IgnoreSaveMode:
                 logging.info(f"Continue the execution regardless that location[{self.location}] exists"
                              f" because save_mode[{self.save_mode}] is defined.")
-            elif self.save_mode == SaveModeOverwrite:
+            elif self.save_mode == OverwriteSaveMode:
                 logging.info(f"Delete all objects in location[{self.location}]"
                              f" because save_mode[{self.save_mode}] is defined.")
                 keys = s3.list_keys(bucket_name=bucket, prefix=prefix, delimiter='/')
