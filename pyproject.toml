@@ -15,13 +15,12 @@ packages = [
 # See. https://pypi.org/pypi?%3Aaction=list_classifiers
 classifiers = [
   "Development Status :: 4 - Beta",
-  "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.6",
 ]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.6"
 apache-airflow = "^1.10"
 
 [tool.poetry.dev-dependencies]
