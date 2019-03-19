@@ -18,7 +18,6 @@ args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-
 dag = DAG(
     dag_id='example-dag',
     schedule_interval='0 0 * * *',
@@ -42,7 +41,7 @@ GlueAddPartitionOperator(task_id='example-task-2',
                          table='example_table',
                          partition_kv={
                              'table_schema': 'example_db',
-                             'table_name': 'example_table'
+                             'table_name': '{{execution_date.strftime("%Y%m%d")}}'
                          },
                          catalog_region_name='ap-northeast-1',
                          dag=dag,
