@@ -1,5 +1,7 @@
-airflow-plugin-presto_apas
+airflow-plugin-glue_presto_apas
 ==========================
+
+[![PyPi](https://img.shields.io/pypi/v/airflow-plugin-glue-presto-apas.svg)](https://pypi.org/project/airflow-plugin-glue-presto-apas/)
 
 An Airflow Plugin to **Add a Partition As Select(APAS)** on Presto that uses Glue Data Catalog as a Hive metastore.
 
@@ -75,6 +77,8 @@ if __name__ == "__main__":
 - **presto_conn_id**: connection id for presto (string, default = 'presto_default')
 - **aws_conn_id**: connection id for aws (string, default = 'aws_default')
 
+Templates can be used in the options[**db**, **table**, **sql**, **location**, **partition_kv**].
+
 ## glue_add_partition.GlueAddPartitionOperator
 
 - **db**: database name for parititioning (string, required)
@@ -85,6 +89,8 @@ if __name__ == "__main__":
 - **catalog_id**: glue data catalog id if you use a catalog different from account/region default catalog. (string, optional)
 - **catalog_region_name**: glue data catalog region if you use a catalog different from account/region default catalog. (string, us-east-1 )
 - **aws_conn_id**: connection id for aws (string, default = 'aws_default')
+
+Templates can be used in the options[**db**, **table**, **location**, **partition_kv**].
 
 # Development
 
