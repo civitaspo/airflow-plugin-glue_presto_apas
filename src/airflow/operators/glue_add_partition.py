@@ -138,7 +138,7 @@ class GlueAddPartitionOperator(BaseOperator):
                                   location=self.location)
         else:
             raise UnknownError()
-        logging.info(f"Partition{ordered_partition_kv} is updated.")
+        logging.info(f"Partition{ordered_partition_kv}, Location[{self.location}] is updated.")
 
 
 class Error(Exception):
