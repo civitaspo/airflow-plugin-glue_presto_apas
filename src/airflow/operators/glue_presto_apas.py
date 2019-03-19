@@ -2,8 +2,8 @@ import logging
 import random
 import re
 import string
-from typing import Dict, List
 from datetime import datetime, timezone
+from typing import Dict, List
 
 from airflow.hooks.S3_hook import S3Hook
 from airflow.hooks.presto_hook import PrestoHook
@@ -26,7 +26,14 @@ AvailableSaveModes = [
 
 
 class GluePrestoApasOperator(BaseOperator):
-    template_fields = ['sql']
+    template_fields = [
+        'db',
+        'table',
+        'sql',
+        'partition_keys',
+        'partition_values',
+        'location',
+    ]
     template_ext = ['.sql']
 
     @apply_defaults
@@ -53,7 +60,8 @@ class GluePrestoApasOperator(BaseOperator):
         self.fmt = fmt
         self.additional_properties = additional_properties
         self.location = location
-        self.partition_kv = partition_kv
+        self.partition_keys: List[str] = list(partition_kv.keys())
+        self.partition_values: List[str] = list(partition_kv.values())
         self.save_mode = save_mode
         self.catalog_id = catalog_id
         self.catalog_region_name = catalog_region_name
@@ -79,16 +87,38 @@ class GluePrestoApasOperator(BaseOperator):
     def _s3_hook(self) -> S3Hook:
         return S3Hook(aws_conn_id=self.aws_conn_id)
 
+    def _is_sufficient_partition_kv(self) -> bool:
+        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+        glue_pks = glue.get_partition_keys(db=self.db, name=self.table)
+        if len(glue_pks) != len(self.partition_keys):
+            logging.error(f"partition_kv must includes keys[{glue_pks}]")
+            return False
+        for pk in glue_pks:
+            if pk not in self.partition_keys:
+                logging.error(f"Partition keys in Glue{glue_pks}")
+                return False
+        return True
+
+    def _get_ordered_partition_kv(self):
+        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+        ordered_partition_values = []
+        for pk in glue.get_partition_keys(db=self.db, name=self.table):
+            ordered_partition_values.append({
+                'key': pk,
+                'value': self.partition_values[self.partition_keys.index(pk)],
+            })
+        return ordered_partition_values
+
     def _gen_partition_location(self):
         glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
-        partition_elems: List[str] = []
-        for pk in glue.get_partition_keys(db=self.db, name=self.table):
-            if pk not in self.partition_kv:
-                raise ConfigError(f"Partition key[{pk}] is not found in 'partition_kv'")
-            partition_elems.append(f"{pk}={self.partition_kv[pk]}")
         table_location = glue.get_table_location(db=self.db, name=self.table)
         if not table_location.endswith('/'):
             table_location = table_location + '/'
+
+        partition_elems: List[str] = []
+        for h in self._get_ordered_partition_kv():
+            partition_elems.append(f"{h['key']}={h['value']}")
+
         return table_location + '/'.join(partition_elems)
 
     @staticmethod
@@ -113,6 +143,8 @@ class GluePrestoApasOperator(BaseOperator):
             raise ConfigError(f"Table[{self.db}.{self.table}] is not found.")
         if not glue.get_partition_keys(db=self.db, name=self.table):
             raise ConfigError(f"Table[{self.db}.{self.table}] does not have partition keys.")
+        if not self._is_sufficient_partition_kv():
+            raise ConfigError(f"partition keys{self.partition_keys} and partition values{self.partition_values} are insufficient.")
         if not self.location:
             self.location = self._gen_partition_location()
         if not self.location.endswith('/'):
@@ -191,6 +223,10 @@ class GluePrestoApasOperator(BaseOperator):
             f"_{self._random_str()}"
 
         bucket, prefix = self._extract_s3_uri(self.location)
+        ordered_partition_kv = self._get_ordered_partition_kv()
+        ordered_partition_values = []
+        for h in ordered_partition_kv:
+            ordered_partition_values.append(h["value"])
         dummy_fname = '_DUMMY'
         try:
             # NOTE: Avoid `failed: External location must be a directory`.
@@ -204,18 +240,18 @@ class GluePrestoApasOperator(BaseOperator):
                 presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
                 if glue.does_partition_exists(db=self.db,
                                               table_name=self.table,
-                                              partition_values=list(self.partition_kv.values())):
-                    logging.info(f"Delete a partition[{self.partition_kv.items()}]")
+                                              partition_values=ordered_partition_values):
+                    logging.info(f"Delete a partition{ordered_partition_kv}")
                     glue.delete_partition(db=self.db,
                                           table_name=self.table,
-                                          partition_values=list(self.partition_kv.values()))
+                                          partition_values=ordered_partition_values)
                 logging.info(f"Convert table[{self.db}.{tmp_table}]"
-                             f" to partition[{self.partition_kv.items()}]")
+                             f" to partition{ordered_partition_kv}")
                 glue.convert_table_to_partition(src_db=self.db,
                                                 src_table=tmp_table,
                                                 dst_db=self.db,
                                                 dst_table=self.table,
-                                                partition_values=list(self.partition_kv.values()))
+                                                partition_values=ordered_partition_values)
             finally:
                 if glue.does_table_exists(db=self.db, name=tmp_table):
                     glue.delete_table(db=self.db, name=tmp_table)

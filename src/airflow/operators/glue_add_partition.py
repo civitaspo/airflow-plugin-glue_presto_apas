@@ -17,6 +17,14 @@ AvailableModes = [
 
 
 class GlueAddPartitionOperator(BaseOperator):
+    template_fields = [
+        'db',
+        'table',
+        'partition_keys',
+        'partition_values',
+        'location',
+    ]
+
     def __init__(
             self,
             db: str,
@@ -34,7 +42,8 @@ class GlueAddPartitionOperator(BaseOperator):
         self.db = db
         self.table = table
         self.location = location
-        self.partition_kv = partition_kv
+        self.partition_keys = list(partition_kv.keys())
+        self.partition_values = list(partition_kv.values())
         self.mode = mode
         self.catalog_id = catalog_id
         self.catalog_region_name = catalog_region_name
@@ -50,16 +59,38 @@ class GlueAddPartitionOperator(BaseOperator):
                                    catalog_id=self.catalog_id,
                                    region_name=self.catalog_region_name)
 
+    def _is_sufficient_partition_kv(self) -> bool:
+        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+        glue_pks = glue.get_partition_keys(db=self.db, name=self.table)
+        if len(glue_pks) != len(self.partition_keys):
+            logging.error(f"partition_kv must includes keys[{glue_pks}]")
+            return False
+        for pk in glue_pks:
+            if pk not in self.partition_keys:
+                logging.error(f"Partition keys in Glue{glue_pks}")
+                return False
+        return True
+
+    def _get_ordered_partition_kv(self):
+        glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+        ordered_partition_values = []
+        for pk in glue.get_partition_keys(db=self.db, name=self.table):
+            ordered_partition_values.append({
+                'key': pk,
+                'value': self.partition_values[self.partition_keys.index(pk)],
+            })
+        return ordered_partition_values
+
     def _gen_partition_location(self):
         glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
-        partition_elems: List[str] = []
-        for pk in glue.get_partition_keys(db=self.db, name=self.table):
-            if pk not in self.partition_kv:
-                raise ConfigError(f"Partition key[{pk}] is not found in 'partition_kv'")
-            partition_elems.append(f"{pk}={self.partition_kv[pk]}")
         table_location = glue.get_table_location(db=self.db, name=self.table)
         if not table_location.endswith('/'):
             table_location = table_location + '/'
+
+        partition_elems: List[str] = []
+        for h in self._get_ordered_partition_kv():
+            partition_elems.append(f"{h['key']}={h['value']}")
+
         return table_location + '/'.join(partition_elems)
 
     def pre_execute(self, context):
@@ -71,6 +102,8 @@ class GlueAddPartitionOperator(BaseOperator):
             raise ConfigError(f"Table[{self.db}.{self.table}] does not exist.")
         if not glue.get_partition_keys(db=self.db, name=self.table):
             raise ConfigError(f"Table[{self.db}.{self.table}] does not have partition keys.")
+        if not self._is_sufficient_partition_kv():
+            raise ConfigError(f"partition keys{self.partition_keys} and partition values{self.partition_values} are insufficient.")
         if not self.location:
             self.location = self._gen_partition_location()
         if not self.location.endswith('/'):
@@ -78,30 +111,34 @@ class GlueAddPartitionOperator(BaseOperator):
 
     def execute(self, context):
         glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
+        ordered_partition_kv = self._get_ordered_partition_kv()
+        ordered_partition_values = []
+        for h in ordered_partition_kv:
+            ordered_partition_values.append(h["value"])
 
         if not glue.does_partition_exists(db=self.db,
                                           table_name=self.table,
-                                          partition_values=list(self.partition_kv.values())):
+                                          partition_values=ordered_partition_values):
             glue.create_partition(db=self.db,
                                   table_name=self.table,
-                                  partition_values=list(self.partition_kv.values()),
+                                  partition_values=ordered_partition_values,
                                   location=self.location)
-            logging.info(f"Partition[{self.partition_kv}] is created.")
+            logging.info(f"Partition{ordered_partition_kv} is created.")
             return
 
         if self.mode == ErrorIfExistsMode:
-            raise ConfigError(f"Partition[{self.partition_kv}] already exists.")
+            raise ConfigError(f"Partition{ordered_partition_kv} already exists.")
         elif self.mode == SkipIfExistsMode:
-            logging.info(f"Partition[{self.partition_kv}] already exists. Skip to add a partition.")
+            logging.info(f"Partition{ordered_partition_kv} already exists. Skip to add a partition.")
             return
         elif self.mode == OverwriteMode:
             glue.update_partition(db=self.db,
                                   table_name=self.table,
-                                  partition_values=list(self.partition_kv.values()),
+                                  partition_values=ordered_partition_values,
                                   location=self.location)
         else:
             raise UnknownError()
-        logging.info(f"Partition[{self.partition_kv}] is updated.")
+        logging.info(f"Partition{ordered_partition_kv}, Location[{self.location}] is updated.")
 
 
 class Error(Exception):
