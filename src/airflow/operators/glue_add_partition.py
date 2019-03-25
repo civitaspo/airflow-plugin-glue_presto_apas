@@ -1,6 +1,8 @@
 import logging
+import re
 from typing import Dict, List
 
+from airflow.hooks.S3_hook import S3Hook
 from airflow.models import BaseOperator
 
 from airflow.hooks.glue_presto_apas import GlueDataCatalogHook
@@ -32,6 +34,7 @@ class GlueAddPartitionOperator(BaseOperator):
             partition_kv: Dict[str, str],
             location: str = None,
             mode: str = 'overwrite',
+            follow_location: bool = True,
             catalog_id: str = None,
             catalog_region_name: str = None,
             presto_conn_id: str = 'presto_default',
@@ -45,6 +48,7 @@ class GlueAddPartitionOperator(BaseOperator):
         self.partition_keys = list(partition_kv.keys())
         self.partition_values = list(partition_kv.values())
         self.mode = mode
+        self.follow_location = follow_location
         self.catalog_id = catalog_id
         self.catalog_region_name = catalog_region_name
         self.presto_conn_id = presto_conn_id
@@ -58,6 +62,9 @@ class GlueAddPartitionOperator(BaseOperator):
         return GlueDataCatalogHook(aws_conn_id=self.aws_conn_id,
                                    catalog_id=self.catalog_id,
                                    region_name=self.catalog_region_name)
+
+    def _s3_hook(self) -> S3Hook:
+        return S3Hook(aws_conn_id=self.aws_conn_id)
 
     def _is_sufficient_partition_kv(self) -> bool:
         glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
@@ -93,6 +100,22 @@ class GlueAddPartitionOperator(BaseOperator):
 
         return table_location + '/'.join(partition_elems)
 
+    def _does_location_exists(self):
+        s3: S3Hook = self._s3_hook()
+        if not self.location:
+            raise ConfigError(f"'location' is not set")
+        bucket, prefix = self._extract_s3_uri(self.location)
+        return s3.check_for_prefix(bucket_name=bucket, prefix=prefix, delimiter='/')
+
+    @staticmethod
+    def _extract_s3_uri(uri) -> (str, str):
+        m = re.search('^s3://([^/]+)/(.+)', uri)
+        if not m:
+            raise Error(f"URI[{uri}] is invalid for S3.")
+        bucket = m.group(1)
+        prefix = m.group(2)
+        return bucket, prefix
+
     def pre_execute(self, context):
         glue: GlueDataCatalogHook = self._glue_data_catalog_hook()
 
@@ -115,6 +138,20 @@ class GlueAddPartitionOperator(BaseOperator):
         ordered_partition_values = []
         for h in ordered_partition_kv:
             ordered_partition_values.append(h["value"])
+
+        if self.follow_location:
+            if not self._does_location_exists():
+                if not glue.does_partition_exists(db=self.db,
+                                                  table_name=self.table,
+                                                  partition_values=ordered_partition_values):
+                    logging.info(f"Skip partitioning because Location[{self.location}] does not exist.")
+                    return
+                logging.info(f"Delete Partition{ordered_partition_kv}"
+                             f" because Location[{self.location}] does not exist.")
+                glue.delete_partition(db=self.db,
+                                      table_name=self.table,
+                                      partition_values=ordered_partition_values)
+                return
 
         if not glue.does_partition_exists(db=self.db,
                                           table_name=self.table,
