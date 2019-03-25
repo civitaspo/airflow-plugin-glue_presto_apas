@@ -1,3 +1,8 @@
+0.0.4 (2019-03-25)
+==================
+
+* Add `follow_location` option to `GlueAddPartitionOperator`.
+
 0.0.3 (2019-03-19)
 ==================
 
