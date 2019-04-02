@@ -237,6 +237,9 @@ class GluePrestoApasOperator(BaseOperator):
                 prop_stmt = self._prepare_create_table_properties_stmt()
                 presto.get_first(f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )"
                                  f"WITH ( {prop_stmt} )")
+                if not glue.does_table_exists(self.db, tmp_table):
+                    raise StateError(f"Run CREATE TABLE, but the table does not exists: {self.db}.{tmp_table}")
+
                 presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
                 if glue.does_partition_exists(db=self.db,
                                               table_name=self.table,
@@ -264,6 +267,10 @@ class Error(Exception):
 
 
 class ConfigError(Error):
+    pass
+
+
+class StateError(Error):
     pass
 
 
