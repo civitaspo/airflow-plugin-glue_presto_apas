@@ -1,3 +1,8 @@
+0.0.7 (2019-04-02)
+==================
+
+* Use `presto-python-client` instead of `PyHive/pypresto` experimentally.
+
 0.0.6 (2019-04-02)
 ==================
 
