@@ -183,7 +183,7 @@ class GluePrestoApasOperator(BaseOperator):
             f"_{self._random_str()}"
         columns: List[Dict[str, str]] = []
         try:
-            presto.get_first(f"CREATE VIEW {self.db}.{tmp_table} AS {self.sql}")
+            presto.get_first(f"CREATE VIEW {self.db}.{tmp_table} AS {sql}")
             for c in presto.get_records(f"DESCRIBE {self.db}.{tmp_table}"):
                 col_name = c[0]
                 col_type = c[1]
