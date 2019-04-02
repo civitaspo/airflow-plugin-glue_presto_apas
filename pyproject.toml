@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "airflow-plugin-glue_presto_apas"
-version = "0.0.7"
+version = "0.0.8"
 description = "An Airflow Plugin to Add a Partition As Select(APAS) on Presto that uses Glue Data Catalog as a Hive metastore."
 readme = "README.md"
 authors = ["Civitaspo <civitaspo@gmail.com>"]

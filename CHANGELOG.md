@@ -1,3 +1,9 @@
+0.0.8 (2019-04-02)
+==================
+
+* More logging in `PrestoHook`.
+* Handle `NO RESULTS` error.
+
 0.0.7 (2019-04-02)
 ==================
 
