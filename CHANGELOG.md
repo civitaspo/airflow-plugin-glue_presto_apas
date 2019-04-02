@@ -1,3 +1,8 @@
+0.0.6 (2019-04-02)
+==================
+
+* Use `PrestoHook#get_first` instead of `PrestoHook#run` because `PrestoHook#run` can be use `autocommit=False` context.
+
 0.0.5 (2019-04-02)
 ==================
 

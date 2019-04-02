@@ -183,7 +183,7 @@ class GluePrestoApasOperator(BaseOperator):
             f"_{self._random_str()}"
         columns: List[Dict[str, str]] = []
         try:
-            presto.run(f"CREATE VIEW {self.db}.{tmp_table} AS {sql}")
+            presto.get_first(f"CREATE VIEW {self.db}.{tmp_table} AS {sql}")
             for c in presto.get_records(f"DESCRIBE {self.db}.{tmp_table}"):
                 col_name = c[0]
                 col_type = c[1]
@@ -192,7 +192,7 @@ class GluePrestoApasOperator(BaseOperator):
                     'type': col_type,
                 })
         finally:
-            presto.run(f"DROP VIEW {self.db}.{tmp_table}")
+            presto.get_first(f"DROP VIEW {self.db}.{tmp_table}")
         return columns
 
     def _prepare_create_table_properties_stmt(self):
@@ -235,12 +235,12 @@ class GluePrestoApasOperator(BaseOperator):
 
             try:
                 prop_stmt = self._prepare_create_table_properties_stmt()
-                presto.run(f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )"
+                presto.get_first(f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )"
                                  f"WITH ( {prop_stmt} )")
                 if not glue.does_table_exists(self.db, tmp_table):
                     raise StateError(f"Run CREATE TABLE, but the table does not exists: {self.db}.{tmp_table}")
 
-                presto.run(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
+                presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
                 if glue.does_partition_exists(db=self.db,
                                               table_name=self.table,
                                               partition_values=ordered_partition_values):
