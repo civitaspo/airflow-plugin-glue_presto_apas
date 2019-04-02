@@ -154,8 +154,6 @@ class GluePrestoApasOperator(BaseOperator):
         s3: S3Hook = self._s3_hook()
 
         bucket, prefix = self._extract_s3_uri(self.location)
-        if not prefix.endswith('/'):
-            prefix = prefix + '/'
         if s3.check_for_prefix(bucket_name=bucket, prefix=prefix, delimiter='/'):
             if self.save_mode == SkipIfExistsSaveMode:
                 logging.info(f"Skip this execution because location[{self.location}] exists"
@@ -235,12 +233,20 @@ class GluePrestoApasOperator(BaseOperator):
 
             try:
                 prop_stmt = self._prepare_create_table_properties_stmt()
-                presto.get_first(f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )"
-                                 f"WITH ( {prop_stmt} )")
+                sql = f"CREATE TABLE {self.db}.{tmp_table} ( {','.join(col_stmts)} )" \
+                    f" WITH ( {prop_stmt} )"
+                r = presto.get_first(sql)
+                logging.info(f"SQL[{sql}], Result[{r}]")
+                if not r:
+                    raise StateError(f"Fail: SQL[{sql}]")
                 if not glue.does_table_exists(self.db, tmp_table):
                     raise StateError(f"Run CREATE TABLE, but the table does not exists: {self.db}.{tmp_table}")
 
-                presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
+                sql = f"INSERT INTO {self.db}.{tmp_table} {self.sql}"
+                r = presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
+                logging.info(f"SQL[{sql}], Result[{r}]")
+                if not r:
+                    raise StateError(f"Fail: SQL[{sql}]")
                 if glue.does_partition_exists(db=self.db,
                                               table_name=self.table,
                                               partition_values=ordered_partition_values):

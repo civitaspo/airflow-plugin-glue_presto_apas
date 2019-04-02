@@ -206,6 +206,7 @@ class PrestoHook(PrestoHook):
             request_timeout=db.extra_dejson.get('max_attempts', prestodb.constants.DEFAULT_REQUEST_TIMEOUT), )
 
     def get_records(self, hql, parameters=None):
+        logging.info(hql)
         hql = self._strip_sql(hql)
         if sys.version_info[0] < 3:
             hql = hql.encode('utf-8')
@@ -219,6 +220,7 @@ class PrestoHook(PrestoHook):
             return cur.fetchall()
 
     def get_first(self, hql, parameters=None):
+        logging.info(hql)
         hql = self._strip_sql(hql)
         if sys.version_info[0] < 3:
             hql = hql.encode('utf-8')
