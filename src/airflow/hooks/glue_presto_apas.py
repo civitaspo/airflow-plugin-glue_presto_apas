@@ -1,4 +1,9 @@
 import logging
+import sys
+from contextlib import closing
+
+import prestodb
+from airflow.hooks.presto_hook import PrestoHook
 from typing import List
 
 from airflow.contrib.hooks.aws_hook import AwsHook
@@ -162,7 +167,6 @@ class GlueDataCatalogHook(AwsHook):
             args['CatalogId'] = self.catalog_id
         self.get_conn().update_partition(**args)
 
-
     def convert_table_to_partition(
             self,
             src_db: str, src_table: str,
@@ -183,6 +187,51 @@ class GlueDataCatalogHook(AwsHook):
         self.delete_table(db=src_db, name=src_table)
 
 
+class PrestoHook(PrestoHook):
+    def get_conn(self):
+        """Returns a connection object"""
+        db = self.get_connection(self.presto_conn_id)
+        user = db.login
+        if not user:
+            user = "airflow"
+        return prestodb.dbapi.connect(
+            host=db.host,
+            port=db.port,
+            user=user,
+            source=db.extra_dejson.get('source', 'airflow'),
+            http_scheme=db.extra_dejson.get('http_scheme', 'http'),
+            catalog=db.extra_dejson.get('catalog', 'hive'),
+            schema=db.schema,
+            max_attempts=db.extra_dejson.get('max_attempts', prestodb.constants.DEFAULT_MAX_ATTEMPTS),
+            request_timeout=db.extra_dejson.get('max_attempts', prestodb.constants.DEFAULT_REQUEST_TIMEOUT), )
+
+    def get_records(self, hql, parameters=None):
+        hql = self._strip_sql(hql)
+        if sys.version_info[0] < 3:
+            hql = hql.encode('utf-8')
+
+        with closing(self.get_conn()) as conn:
+            cur = conn.cursor()
+            if parameters is not None:
+                cur.execute(hql, parameters)
+            else:
+                cur.execute(hql)
+            return cur.fetchall()
+
+    def get_first(self, hql, parameters=None):
+        hql = self._strip_sql(hql)
+        if sys.version_info[0] < 3:
+            hql = hql.encode('utf-8')
+
+        with closing(self.get_conn()) as conn:
+            cur = conn.cursor()
+            if parameters is not None:
+                cur.execute(hql, parameters)
+            else:
+                cur.execute(hql)
+            return cur.fetchone()
+
+
 class Error(Exception):
     pass
 
@@ -190,3 +239,6 @@ class Error(Exception):
 class GlueDataCatalogError(Error):
     pass
 
+
+class PrestoError(Error):
+    pass
