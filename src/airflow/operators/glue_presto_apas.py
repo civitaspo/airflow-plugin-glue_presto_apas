@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from typing import Dict, List
 
 from airflow.hooks.S3_hook import S3Hook
-from airflow.hooks.presto_hook import PrestoHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
 from airflow.hooks.glue_presto_apas import GlueDataCatalogHook
+from airflow.hooks.glue_presto_apas import PrestoHook
 
 SkipIfExistsSaveMode = 'skip_if_exists'
 ErrorIfExistsSaveMode = 'error_if_exists'
