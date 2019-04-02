@@ -1,3 +1,9 @@
+0.0.5 (2019-04-02)
+==================
+
+* Handle a error: `CREATE TABLE` is not applied.
+* Use `PrestoHook#run` instead of `PrestoHook#get_first` for `{CREATE,DROP} {VIEW,TABLE}`
+
 0.0.4 (2019-03-25)
 ==================
 
