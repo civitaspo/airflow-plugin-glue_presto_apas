@@ -1,4 +1,4 @@
-FROM    python:3.7
+FROM    python:3.6
 
 # By default one of Airflow's dependencies installs a GPL dependency (unidecode). To avoid this dependency set SLUGIFY_USES_TEXT_UNIDECODE=yes in your environment when you install or upgrade Airflow. To force installing the GPL version set AIRFLOW_GPL_UNIDECODE
 ENV     SLUGIFY_USES_TEXT_UNIDECODE=yes
@@ -50,7 +50,7 @@ RUN         set -ex \
         &&  sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen \
         &&  locale-gen \
         &&  update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-        &&  pip install --no-cache-dir 'apache-airflow[hive,s3]==1.10.2' 'tenacity==4.12.0' \
+        &&  pip install --no-cache-dir 'apache-airflow[hive,s3]==1.10.2' 'presto-python-client==0.5.1' \
         &&  apt-get remove --purge -yqq $buildDeps libpq-dev \
         &&  apt-get clean \
         &&  rm -rf \
