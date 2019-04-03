@@ -1,3 +1,8 @@
+0.0.9 (2019-04-03)
+==================
+
+* Add a check whether objects are created after `INSERT ... SELECT ...` query.
+
 0.0.8 (2019-04-02)
 ==================
 

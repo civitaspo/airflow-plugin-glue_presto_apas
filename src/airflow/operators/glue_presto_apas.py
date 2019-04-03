@@ -3,6 +3,8 @@ import random
 import re
 import string
 from datetime import datetime, timezone
+
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 from typing import Dict, List
 
 from airflow.hooks.S3_hook import S3Hook
@@ -202,6 +204,29 @@ class GluePrestoApasOperator(BaseOperator):
             props_stmts.append(f"{k} = {v}")
         return ','.join(props_stmts)
 
+    @retry(reraise=True,
+           stop=stop_after_attempt(5),
+           wait=wait_random_exponential(multiplier=1, max=60))
+    def wait_until_objects_created(self, obj_filter=lambda obj: True):
+        s3: S3Hook = self._s3_hook()
+        bucket, prefix = self._extract_s3_uri(self.location)
+        created_objects = []
+        for key in s3.list_keys(bucket_name=bucket, prefix=prefix, delimiter='/'):
+            obj = s3.get_key(bucket_name=bucket, key=key)
+            if obj_filter(obj):
+                logging.info(f"Found a created object[{obj}"
+                             f", last_modified:{obj.last_modified}"
+                             f", length:{obj.content_length}].")
+                created_objects.append(obj)
+            else:
+                logging.info(f"Skip a Object[{obj}"
+                             f", last_modified:{obj.last_modified}"
+                             f", length:{obj.content_length}] "
+                             f"as is not created in the current execution.")
+        if not created_objects:
+            raise StateError(f"No objects are found in {self.location}.")
+        logging.info(f"Created objects are found in {self.location}.")
+
     def execute(self, context) -> None:
         s3: S3Hook = self._s3_hook()
         presto: PrestoHook = self._presto_hook()
@@ -239,14 +264,25 @@ class GluePrestoApasOperator(BaseOperator):
                 logging.info(f"SQL[{sql}], Result[{r}]")
                 if not r:
                     raise StateError(f"Fail: SQL[{sql}]")
+                is_created = r[0]
+                if not is_created:
+                    raise StateError(f"Fail: SQL[{sql}]")
                 if not glue.does_table_exists(self.db, tmp_table):
                     raise StateError(f"Run CREATE TABLE, but the table does not exists: {self.db}.{tmp_table}")
 
+                query_start_at = datetime.now(timezone.utc)
                 sql = f"INSERT INTO {self.db}.{tmp_table} {self.sql}"
                 r = presto.get_first(f"INSERT INTO {self.db}.{tmp_table} {self.sql}")
                 logging.info(f"SQL[{sql}], Result[{r}]")
                 if not r:
                     raise StateError(f"Fail: SQL[{sql}]")
+                affected_rows = r[0]
+                if affected_rows > 0:
+                    logging.info(f"The query starts at {query_start_at}.")
+                    self.wait_until_objects_created(
+                        obj_filter=lambda obj: obj.last_modified > query_start_at and obj.content_length > 0
+                    )
+
                 if glue.does_partition_exists(db=self.db,
                                               table_name=self.table,
                                               partition_values=ordered_partition_values):
