@@ -4,12 +4,11 @@ import re
 import string
 from datetime import datetime, timezone
 
-from tenacity import retry, stop_after_attempt, wait_random_exponential
-from typing import Dict, List
-
 from airflow.hooks.S3_hook import S3Hook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
+from tenacity import retry, stop_after_attempt, wait_random_exponential
+from typing import Dict, List
 
 from airflow.hooks.glue_presto_apas import GlueDataCatalogHook
 from airflow.hooks.glue_presto_apas import PrestoHook
@@ -207,6 +206,17 @@ class GluePrestoApasOperator(BaseOperator):
     @retry(reraise=True,
            stop=stop_after_attempt(5),
            wait=wait_random_exponential(multiplier=1, max=60))
+    def wait_for(self, success_message: str, failure_message: str, method=lambda: False):
+        if method():
+            logging.info(success_message)
+            return
+        else:
+            logging.warning(failure_message)
+            raise StateError(failure_message)
+
+    @retry(reraise=True,
+           stop=stop_after_attempt(5),
+           wait=wait_random_exponential(multiplier=1, max=60))
     def wait_until_objects_created(self, obj_filter=lambda obj: True):
         s3: S3Hook = self._s3_hook()
         bucket, prefix = self._extract_s3_uri(self.location)
@@ -279,6 +289,11 @@ class GluePrestoApasOperator(BaseOperator):
                 affected_rows = r[0]
                 if affected_rows > 0:
                     logging.info(f"The query starts at {query_start_at}.")
+                    self.wait_for(
+                        success_message=f"Table[{self.db}.{tmp_table}] has {affected_rows} rows.",
+                        failure_message=f"Table[{self.db}.{tmp_table}] does not has {affected_rows} rows.",
+                        method=lambda: presto.get_first(f"SELECT COUNT(1) FROM {self.db}.{tmp_table}")[0] == affected_rows
+                    )
                     self.wait_until_objects_created(
                         obj_filter=lambda obj: obj.last_modified > query_start_at and obj.content_length > 0
                     )

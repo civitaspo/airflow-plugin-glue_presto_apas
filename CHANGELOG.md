@@ -1,3 +1,8 @@
+0.0.10 (2019-04-12)
+===================
+
+*  Add to check the table has the same rows as affected rows.
+
 0.0.9 (2019-04-03)
 ==================
 
