@@ -188,6 +188,10 @@ class GlueDataCatalogHook(AwsHook):
 
 
 class PrestoHook(PrestoHook):
+    def __init__(self, query_header_comment='', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.query_header_comment = query_header_comment
+
     def get_conn(self):
         """Returns a connection object"""
         db = self.get_connection(self.presto_conn_id)
@@ -205,7 +209,11 @@ class PrestoHook(PrestoHook):
             max_attempts=db.extra_dejson.get('max_attempts', prestodb.constants.DEFAULT_MAX_ATTEMPTS),
             request_timeout=db.extra_dejson.get('max_attempts', prestodb.constants.DEFAULT_REQUEST_TIMEOUT), )
 
+    def _with_header_comment(self, hql):
+        return f"{self.query_header_comment}\n\n{hql}"
+
     def get_records(self, hql, parameters=None):
+        hql = self._with_header_comment(hql)
         logging.info(hql)
         hql = self._strip_sql(hql)
         if sys.version_info[0] < 3:
@@ -220,6 +228,7 @@ class PrestoHook(PrestoHook):
             return cur.fetchall()
 
     def get_first(self, hql, parameters=None):
+        hql = self._with_header_comment(hql)
         logging.info(hql)
         hql = self._strip_sql(hql)
         if sys.version_info[0] < 3:

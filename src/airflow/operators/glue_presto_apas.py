@@ -2,6 +2,7 @@ import logging
 import random
 import re
 import string
+import textwrap
 from datetime import datetime, timezone
 
 from airflow.hooks.S3_hook import S3Hook
@@ -34,6 +35,7 @@ class GluePrestoApasOperator(BaseOperator):
         'partition_keys',
         'partition_values',
         'location',
+        'query_header_comment',  # internal use
     ]
     template_ext = ['.sql']
 
@@ -69,6 +71,11 @@ class GluePrestoApasOperator(BaseOperator):
         self.presto_conn_id = presto_conn_id
         self.aws_conn_id = aws_conn_id
 
+        self.query_header_comment = textwrap.dedent('''
+            -- AirflowLogURL: {{ ti.log_url }}
+            -- AirflowDagID: {{ ti.dag_id }}, TaskID: {{ ti.task_id }}, ExeDate: {{ ti.execution_date }}
+        ''')
+
         if save_mode not in AvailableSaveModes:
             raise ConfigError(f"Save mode[{save_mode}] is unsupported."
                               f" Supported save modes are {AvailableSaveModes}.")
@@ -78,7 +85,8 @@ class GluePrestoApasOperator(BaseOperator):
                                   f" because this plugin uses.")
 
     def _presto_hook(self) -> PrestoHook:
-        return PrestoHook(presto_conn_id=self.presto_conn_id)
+        return PrestoHook(presto_conn_id=self.presto_conn_id,
+                          query_header_comment=self.query_header_comment)
 
     def _glue_data_catalog_hook(self) -> GlueDataCatalogHook:
         return GlueDataCatalogHook(aws_conn_id=self.aws_conn_id,
