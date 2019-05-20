@@ -1,3 +1,8 @@
+0.0.11 (2019-05-20)
+===================
+
+* Add a query header comment for all queries that describe Airflow task information.
+
 0.0.10 (2019-04-12)
 ===================
 
